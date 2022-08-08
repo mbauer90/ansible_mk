@@ -1,0 +1,100 @@
+---
+  - name: UPDATE ROUTER MK
+    hosts: all
+    gather_facts: no
+
+    tasks:
+
+    # ATUALIZA DNS
+    - name: DNS
+      routeros_command:
+        commands:
+          - /ip dns set servers="{{ dns_servers|join(',') }}"
+      register: cmd_result
+      failed_when: cmd_result.stdout is search('line' or 'bad' or 'invalid' or 'failure')
+      changed_when: cmd_result.stdout is not search('already exists') 
+
+    # FIRMWARE UPGRADE
+    - name: set channel and check update
+      routeros_command:
+        commands:
+          - /system package update set channel=stable
+          - /system package update check-for-updates
+      register: var_check_update
+   
+    - name: Download and reboot
+      when: var_check_update.stdout is search('available')
+      routeros_command:
+        commands:
+          - /system package update install
+      register: var_check_install
+
+      # WAIT REBOOT TO UPDATE FIRMWARE
+    - name: Wait reboot to update firmware
+      when: var_check_update.stdout is search('available')
+      wait_for_connection:
+          connect_timeout: 300
+          sleep: 10
+          delay: 10
+          timeout: 300 
+
+    # GET ARCHITETURE
+    - name: Get resource
+      routeros_command:
+        commands:
+          - /system resource print
+      register: var_resource_print
+    - name: Get architeture
+      when: " 'architecture-name:' in item"
+      set_fact:
+        arch: "{{ item | replace('architecture-name:','') | trim }}"
+      loop: "{{ var_resource_print.stdout_lines[0] }}"
+
+    # TRANSFER FILE
+    - name: File transfer
+      when: var_check_update.stdout is search('not resolve dns name')
+      shell: 'sshpass -p {{ ansible_password }} scp ~/Documentos/Firmware/routeros-{{arch}}-{{version_stable}}.npk {{ ansible_user }}@{{ ansible_ssh_host }}:/'
+      register: var_check_file
+
+    # REBOOT TO UPDATE FIRMWARE
+    - name: Upgrade firmware
+      routeros_command:
+        commands:
+          - :execute {/system reboot;delay 1; quit}
+      when: var_check_update.stdout is search('not resolve dns name')
+      register: var_test
+
+    # WAIT REBOOT TO UPDATE FIRMWARE
+    - name: Wait reboot to update firmware
+      when: var_check_update.stdout is search('not resolve dns name')
+      wait_for_connection:
+          connect_timeout: 300
+          sleep: 10
+          delay: 10
+          timeout: 300
+
+    # ROUTERBOARD UPGRADE
+    - name: Get firmware
+      routeros_command:
+        commands:
+          - /system routerboard print
+      register: var_rboard_out
+
+    - name: Get current firmware
+      when: " 'current-firmware:' in item"
+      set_fact:
+        current: "{{ item | replace('current-firmware:','') | trim }}"
+      loop: "{{ var_rboard_out.stdout_lines[0] }}"
+
+    - name: Get upgrade firmware
+      when: " 'upgrade-firmware:' in item"
+      set_fact:
+        upgrade: "{{ item | replace('upgrade-firmware:','') | trim }}"
+      loop: "{{ var_rboard_out.stdout_lines[0] }}"
+
+    - name: Upgrade routerboard
+      routeros_command:
+        commands:
+          - :execute {/system routerboard upgrade;delay 7; quit}
+          - :execute {/system reboot;delay 1; quit}
+      when: current is version(upgrade,'<')
