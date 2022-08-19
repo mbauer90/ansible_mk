@@ -1,0 +1,48 @@
+---
+  - name: Configurar redundancia de DNS
+    hosts: mikrotiks
+    gather_facts: False
+    #ignore_errors: true
+    #register: results
+    #strategy: free
+
+    tasks:
+
+    # GET IF DSTNAT EXISTS
+    - name: DSTNAT EXISTS
+      routeros_command:
+        commands:
+          - /ip firewall nat print without-paging where comment=DNS_UDP_REDUND
+      register: result_dns_exists
+    - name: VARIABLE DSTNAT EXISTS
+      when: " 'chain=' in item"
+      set_fact:
+        var_dns_exists: "{{ item | replace('chain=','') | trim }}"
+      loop: "{{ result_dns_exists.stdout_lines[0] }}"
+
+    - name: DST_NAT_53
+      routeros_command:
+        commands:
+            - /ip firewall nat add action=dst-nat chain=dstnat comment=DNS_UDP_REDUND disabled=yes dst-port=53 protocol=udp to-addresses=8.8.8.8
+            - /ip firewall nat add action=dst-nat chain=dstnat comment=DNS_TCP_REDUND disabled=yes dst-port=53 protocol=tcp to-addresses=8.8.8.8
+      register: result_dstnat
+      when: var_dns_exists is not defined
+
+    - name: SCHEDULER
+      routeros_command:
+        commands:
+            - /system scheduler add interval=1m name=schedule_dns on-event=":local ipone \"200.19.192.92\";\r\ :local iptwo \"200.19.192.93\";\r\ :local pingsofone [ping \$ipone count=3];\r\ :local pingsoftwo [ping \$iptwo count=3];\r\ :local dstdnsudp [ip firewall nat print count-only where comment=\"DNS_UDP_REDUND\" and disabled];\r\ if ((\$pingsofone<1)&&(\$pingsoftwo<1)&&(\$dstdnsudp>0)) do={/ip firewall nat enable [find comment=\"DNS_UDP_REDUND\"];/ip firewall nat enable [find comment=\"DNS_TCP_REDUND\"];}; if (((\$pingsofone>1)||(\$pingsoftwo>1))&&(\$dstdnsudp<1)) do={/ip firewall nat disable [find comment=\"DNS_UDP_REDUND\"];/ip firewall nat disable [find comment=\"DNS_TCP_REDUND\"];}" policy=ftp,reboot,read,write,policy,test,password,sniff,sensitive,romon start-time=startup }
+      register: result_scheduler
+      failed_when: result_scheduler.stdout is search('line' or 'bad' or 'invalid' or 'failure')
+      changed_when: result_scheduler.stdout is not search('already exists')
+
+# ansible-playbook config_redu_dns_mk.yml -i hosts | tee deploy.log
+# sed -n '/PLAY RECAP/,$p' deploy.log
+
+#:local ipone "200.19.192.92";
+#:local iptwo "200.19.192.93";
+#:local pingsofone [ping $ipone count=3];
+#:local pingsoftwo [ping $iptwo count=3];
+#:local dstdnsudp [ip firewall nat print count-only where comment="DNS_UDP_REDUND" and disabled]
+#if (($pingsofone<1)&&($pingsoftwo<1)&&($dstdnsudp>0)) do={/ip firewall nat enable [find comment="DNS_UDP_REDUND"];/ip firewall nat enable [find comment="DNS_TCP_REDUND"];};
+#if ((($pingsofone>1)||($pingsoftwo>1))&&($dstdnsudp<1)) do={/ip firewall nat disable [find comment="DNS_UDP_REDUND"];/ip firewall nat disable [find comment="DNS_TCP_REDUND"];}
