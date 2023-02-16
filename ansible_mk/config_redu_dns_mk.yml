@@ -14,6 +14,7 @@
         commands:
           - /ip firewall nat print without-paging where comment=DNS_UDP_REDUND
       register: result_dns_exists
+
     - name: VARIABLE DSTNAT EXISTS
       when: " 'chain=' in item"
       set_fact:
@@ -31,10 +32,11 @@
     - name: SCHEDULER
       routeros_command:
         commands:
-            - /system scheduler add interval=1m name=schedule_dns on-event=":local ipone \"200.19.192.92\";\r\ :local iptwo \"200.19.192.93\";\r\ :local pingsofone [ping \$ipone count=3];\r\ :local pingsoftwo [ping \$iptwo count=3];\r\ :local dstdnsudp [ip firewall nat print count-only where comment=\"DNS_UDP_REDUND\" and disabled];\r\ if ((\$pingsofone<1)&&(\$pingsoftwo<1)&&(\$dstdnsudp>0)) do={/ip firewall nat enable [find comment=\"DNS_UDP_REDUND\"];/ip firewall nat enable [find comment=\"DNS_TCP_REDUND\"];}; if (((\$pingsofone>1)||(\$pingsoftwo>1))&&(\$dstdnsudp<1)) do={/ip firewall nat disable [find comment=\"DNS_UDP_REDUND\"];/ip firewall nat disable [find comment=\"DNS_TCP_REDUND\"];}" policy=ftp,reboot,read,write,policy,test,password,sniff,sensitive,romon start-time=startup }
+            - /system scheduler remove schedule_dns
+            - /system scheduler add interval=1m name=schedule_dns on-event=":local ipone \"200.19.192.92\";\r\ :local iptwo \"200.19.192.93\";\r\ :local pingsofone [ping \$ipone count=3];\r\ :local pingsoftwo [ping \$iptwo count=3];\r\ :local dstdnsudp [ip firewall nat print count-only where comment=\"DNS_UDP_REDUND\" and disabled];\r\ if ((\$pingsofone<1)&&(\$pingsoftwo<1)&&(\$dstdnsudp>0)) do={/ip firewall nat enable [find comment=\"DNS_UDP_REDUND\"];/ip firewall nat enable [find comment=\"DNS_TCP_REDUND\"];\r\ :log warning message=\"DNS EXTERNO ATIVADO\";};\r\ if (((\$pingsofone>1)||(\$pingsoftwo>1))&&(\$dstdnsudp<1)) do={/ip firewall nat disable [find comment=\"DNS_UDP_REDUND\"];/ip firewall nat disable [find comment=\"DNS_TCP_REDUND\"];\r\ :log warning message=\"DNS EXTERNO DESATIVADO\";}" policy=ftp,reboot,read,write,policy,test,password,sniff,sensitive,romon start-time=startup }
       register: result_scheduler
       failed_when: result_scheduler.stdout is search('line' or 'bad' or 'invalid' or 'failure')
-      changed_when: result_scheduler.stdout is not search('already exists')
+      changed_when: result_scheduler.stdout is search('already exists')
 
 # ansible-playbook config_redu_dns_mk.yml -i hosts | tee deploy.log
 # sed -n '/PLAY RECAP/,$p' deploy.log

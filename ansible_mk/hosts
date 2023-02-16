@@ -1,11 +1,12 @@
 [mikrotiks]
-mk1 ansible_ssh_host=10.121.34.87
-#mk2 ansible_ssh_host=10.121.34.84
+	BANCADA_TESTE ansible_ssh_host=192.168.1.1
 
 [mikrotiks:vars]
 ansible_network_os=routeros
 ansible_connection=network_cli
-ansible_user=admin
-ansible_password=admin
+ansible_user='XXXXX'
+ansible_password='XXXXXX'
 ansible_command_timeout=300
-ansible_host_key_checking=false
+ansible_host_key_checking=False
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+ansible_ssh_extra_args='-o StrictHostKeyChecking=no'

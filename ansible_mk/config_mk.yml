@@ -1,0 +1,130 @@
+---
+  - name: Configurando Roteador MK
+    hosts: all
+    gather_facts: no
+    #strategy: free
+
+    tasks:
+
+    - name: Hostname
+      routeros_command:
+        commands:
+          - /system identity set name="{{ name_router }}"
+      register: cmd_result
+      failed_when: cmd_result.stdout is search('line' or 'bad' or 'invalid' or 'failure')
+      changed_when: cmd_result.stdout is not search('already exists') 
+
+    - name: DNS
+      routeros_command:
+        commands:
+          - /ip dns set servers="{{ dns_servers|join(',') }}"
+      register: cmd_result
+      failed_when: cmd_result.stdout is search('line' or 'bad' or 'invalid' or 'failure')
+      changed_when: cmd_result.stdout is not search('already exists') 
+
+    - name: Email
+      routeros_command:
+        commands:
+          - /tool e-mail set address="{{ email_ipserv }}" from="{{ email_addr }}" password="{{ email_psswd}}" port=587 start-tls=yes user="{{ email_user }}"
+      register: cmd_result
+      failed_when: cmd_result.stdout is search('line' or 'bad' or 'invalid' or 'failure')
+      changed_when: cmd_result.stdout is not search('already exists') 
+
+    - name: NTP
+      routeros_command:
+        commands:
+          - /system clock set time-zone-name="America/Sao_Paulo"
+        #  - /system ntp client set enabled=yes servers="{{ ntp_servers }}" #v7
+          - /system ntp client set enabled=yes primary-ntp="{{ ntp_pri }}" secondary-ntp="{{ ntp_sec }}"
+      register: cmd_result
+      failed_when: cmd_result.stdout is search('line' or 'bad' or 'invalid' or 'failure')
+      changed_when: cmd_result.stdout is not search('already exists') 
+
+    - name: SNMP #rever caso de escrever, mas ja existir
+      routeros_command:
+        commands:
+          - /snmp community add addresses=0.0.0.0/0 authentication-password="{{ snmp_name }}" encryption-password="{{ snmp_name }}" name="{{ snmp_name }}"
+          - /snmp set contact="{{ email_addr }}" enabled=yes engine-id="''" location="{{ name_router }}" trap-community="{{ snmp_name }}" trap-generators=interfaces,temp-exception trap-interfaces=all trap-target=0.0.0.0 trap-version=2
+      register: cmd_result
+      failed_when: cmd_result.stdout is search('line' or 'bad' or 'invalid' or 'failure')
+      changed_when: cmd_result.stdout is not search('already exists')
+
+    - name: Services
+      routeros_command:
+        commands:
+          - /ip service set telnet address="{{ ips_allow|join(',') }}"
+          - /ip service set ftp disabled=yes
+          - /ip service set www address="{{ ips_allow|join(',') }}"
+          - /ip service set ssh address="{{ ips_allow|join(',') }}"
+          - /ip service set api address="{{ ips_allow|join(',') }}"
+          - /ip service set winbox address="{{ ips_allow|join(',') }}"
+          - /ip service set api-ssl address="{{ ips_allow|join(',') }}"
+      register: cmd_result
+      failed_when: cmd_result.stdout is search('line' or 'bad' or 'invalid' or 'failure')
+      changed_when: cmd_result.stdout is not search('already exists') 
+
+    - name: Logging #rever caso de escrever, mas ja existir
+      routeros_command:
+        commands:
+          - /system logging action add bsd-syslog=yes name=Syslog remote="{{ ip_logging }}" remote-port=8514 src-address="{{ ip_address }}" syslog-facility=syslog target=remote
+          - /system logging add action=Syslog topics=account
+          - /system logging add action=Syslog topics=critical
+          - /system logging add action=Syslog topics=error
+          - /system logging add action=Syslog topics=event
+          - /system logging add action=Syslog topics=interface
+          - /system logging add action=Syslog topics=manager
+          - /system logging add action=Syslog topics=route
+          - /system logging add action=Syslog topics=script
+          - /system logging add action=Syslog topics=system
+          - /system logging add action=Syslog topics=warning
+      register: cmd_result
+      failed_when: cmd_result.stdout is search('line' or 'bad' or 'invalid' or 'failure')
+      changed_when: cmd_result.stdout is not search('already exists')
+
+####################### PARTE CRITICA #######################
+
+    - name: SSTP
+      routeros_command:
+        commands:
+          - /interface sstp-client add comment=redundancia connect-to="{{ sstp_ipserv }}" disabled=no name=cbmsc-principal password="{{ sstp_psswd }}" profile=default-encryption user="{{ sstp_user }}"
+      register: cmd_result
+      failed_when: cmd_result.stdout is search('line')
+      changed_when: cmd_result.stdout is not search('already exists')
+
+    - name: Bridge
+      routeros_command:
+        commands:
+          - /interface bridge set name=bridge_cbmsc numbers=0
+          - /ip address add address="{{ ip_address }}" interface=bridge_cbmsc
+          - /interface list member add interface=cbmsc-principal list=LAN
+          - /interface list member add interface=bridge-cbmsc list=LAN
+      register: cmd_result
+      failed_when: cmd_result.stdout is search('line' or 'bad' or 'invalid' or 'failure')
+      changed_when: cmd_result.stdout is not search('already exists') 
+
+    - name: TAKE GATEWAY DHCP-CLIENT
+      routeros_command: 
+        commands:
+          - /ip dhcp-client print value-list
+      register: var_dhcpclient_result
+    - name: Get gateway
+      when: " 'gateway:' in item"
+      set_fact:
+        gw: "{{ item | replace('gateway:','') | trim }}"
+      loop: "{{ var_dhcpclient_result.stdout_lines[0] }}"  
+
+    - name: ROUTE
+      routeros_command:
+        commands:
+          - /ip route add comment=Rota_Padrao distance=1 gateway="{{ gw }}"    
+          - /ip route add comment=redundancia distance=1 gateway="{{ sstp_ipremot }}" routing-mark=voip
+          - /ip route add comment=redundancia distance=1 dst-address=10.0.0.0/8 gateway="{{ sstp_ipremot }}"
+          - /ip route add comment=redundancia distance=1 dst-address=172.16.0.0/12 gateway="{{ sstp_ipremot }}"
+          - /ip route add comment=redundancia distance=1 dst-address=200.19.0.0/16 gateway="{{ sstp_ipremot }}"
+          - /ip route add comment=SSTP_VPN distance=1 dst-address=200.19.192.65/32 gateway="{{ gw }}"    
+      register: cmd_result
+      failed_when: cmd_result.stdout is search('line' or 'bad' or 'invalid' or 'failure')
+      changed_when: cmd_result.stdout is not search('already exists')  
+
+#    - debug:
+#            msg: "{{cmd_result.stdout}}"  

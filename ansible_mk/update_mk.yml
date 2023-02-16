@@ -98,3 +98,9 @@
           - :execute {/system routerboard upgrade;delay 7; quit}
           - :execute {/system reboot;delay 1; quit}
       when: current is version(upgrade,'<')
+#    - name: debug test
+#      when: var_rboard_out.stdout != ""
+#      when: current is version(upgrade,'<')
+#      debug:
+#            msg: "{{var_system_routerboard.stdout_lines}}" 
+#            var: current, upgrade

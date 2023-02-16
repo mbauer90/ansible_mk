@@ -1,0 +1,26 @@
+name_router: FW_BANCADA_TESTE
+ip_address: 192.168.1.1/24
+ip_address_logging: 192.168.1.10
+sstp_user: teste
+sstp_psswd: teste
+sstp_ipremot: 10.10.10.1
+version_stable: 6.49.6
+#####################==== PADRAO CBMSC ====#####################
+sstp_ipserv: 15.15.15.15
+dns_servers: 
+  - 15.15.15.15
+  - 15.15.15.15
+ips_allow: 
+  - 15.15.15.15/16
+  - 15.15.15.15/24
+ntp_pri: 15.15.15.15
+ntp_sec: 15.15.15.15
+ntp_servers: 
+  - 15.15.15.15
+  - 115.15.15.15
+ip_logging: 15.15.15.15
+email_ipserv: 15.15.15.15
+email_addr: teste@teste
+email_user: teste
+email_psswd: teste
+snmp_name: snmp4teste
